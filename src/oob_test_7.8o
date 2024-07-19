@@ -1,0 +1,402 @@
+:alias result_1 vA
+:alias result_2 vB
+
+: main
+
+	Welcome_Screen
+
+	result_1 := 0x00
+	result_2 := 0x00
+
+	test_input
+	test_draw
+	test_hex
+
+	Print_Categories
+
+	vE := 0x02
+	if v6 != 0x00 then Paint_Tick
+
+	vE := 0x09
+	if v7 != 0x00 then Paint_Tick
+	
+	vE := 0x10
+	if v8 != 0x00 then Paint_Tick
+	
+	vE := 0x17
+	test_memory
+	if v9 != 0x00 then Paint_Tick
+	
+	loop again
+
+
+: test_input
+	v1 := key
+	v2 := v1
+	v2 += 0xB0
+	
+	: looping
+		vF := 0x01
+		delay := vF
+
+		if v1 key then result_1 := 0x01
+		if v2 key then result_2 := 0x01
+
+		vF := delay
+		if vF == 0x00 then jump looping
+
+		if result_1 != 0x00 then jump test_input_result
+		if result_2 != 0x00 then jump test_input_result
+
+		result_1 := 0x00
+		result_2 := 0x00
+		jump looping
+
+	: test_input_result
+		result_1 &= result_2
+		v6 := result_1
+		return
+#--------------------------------------------#
+: test_draw
+	v0 := 0x0A
+	i := hex v0
+	v1 := 0x01
+	v2 := 0x1A
+	sprite v1 v2 0x05
+	vE := 0x41
+	vF := 0x3A
+	sprite vE vF 0x05
+	result_1 := vF
+	i := Block
+	sprite v1 v2 0x05
+	result_2 := vF
+
+	if result_1 != 0x00 begin
+		if result_2 == 0x00 then
+			v7 := 0x01
+	end
+	return
+#--------------------------------------------#
+: test_hex
+	v0 := 0x0A
+	i := hex v0
+	v1 := 0x10
+	v2 := 0x01
+	sprite v1 v2 0x05
+	v0 := 0xBA
+	i := hex v0
+	sprite v1 v2 0x05
+	result_1 := vF
+	i := Block
+	sprite v1 v2 0x05
+	result_2 := vF
+
+	if result_1 != 0x00 begin
+		if result_2 == 0x00 then
+			v8 := 0x01
+	end
+	return
+#--------------------------------------------#
+: test_memory
+	result_1 := 0x00
+	result_2 := 0x00
+	vC := 0x00
+	
+	#test vF flag on I += N when at FFF
+		vF := 0x00
+		v0 := 0x01
+		i := 0xFFF
+		i += v0
+	#if you failed here, I don't know what to say
+		if vF != 0x00 then return
+	
+	#write 234 to MEM at I[FFF..001] then load to V0..V2
+		v0 := 0xEA
+		i := 0xFFF
+		bcd v0
+		load v2
+
+	#print hex to screen as result indicator
+		vD := 0x20
+		i := hex v0
+		sprite vD vE 0x05
+		vD += 0x05
+		i := hex v1
+		sprite vD vE 0x05
+		vD += 0x05
+		i := hex v2
+		sprite vD vE 0x05
+	
+	#now we'll test if the memory overflow is modifiable
+	
+		#write 0xFF to MEM at I[FFF..001]
+			v0 := 0xFF
+			v1 := v0
+			v2 := v1
+			i := 0xFFF
+			save v2
+	
+		#check if MEM at I[000] was changed to FF, inc vC if not
+			i := 0x000
+			load v0
+			if v0 != 0xFF then vC += 0x01
+			
+		#check if MEM at I[001] was changed to FF, inc vC if not
+			i := 0x001
+			load v0
+			if v0 != 0xFF then vC += 0x01
+	
+	#now we'll check if you cheated with a higher memory size (or blocked reads/writes)
+	
+			v2 := 0x01
+		#load V1 with MEM at I[000]
+			i := 0x000
+			load v0
+			v1 := v0
+		#load V0 with MEM at I[FFF+1] <- would it overflow?!
+			i := 0xFFF
+			i += v2
+			load v0
+		#if they don't match, inc vC, either you cheated or there's no R/W ability
+			if v0 != v1 then vC += 0x01
+	
+		v2 := 0x02
+		#load V1 with MEM at I[001]
+			i := 0x001
+			load v0
+			v1 := v0
+		#load V1 with MEM at I[FFF+2] <- would it overflow?!
+			i := 0xFFF
+			i += v2
+			load v0
+		#if they don't match, inc vC, either you cheated or there's no R/W ability
+			if v0 != v1 then vC += 0x01
+	
+	# check if vC is odd, if it is, you screwed up somehow
+		v0 := 0x01
+		vF := vC
+		vF &= v0
+		if vF == 0x01 then return
+	#otherwise, first test phase is complete, good job
+		result_1 := 0x01
+
+
+	#now to test OOB index when drawing
+	
+		#draw two FF pixel rows on bottom right edge
+			i := 0xFFF #reusing edge FF block
+			v0 := 0x01
+			v1 := 0x38
+			v2 := 0x1E
+			sprite v1 v2 0x02
+	
+	#wipe the top row, ensure we got a collision
+		sprite v1 v2 0x01
+		result_1 &= vf
+		
+	#take I to FFF+1 then draw bottom row with the data there
+		i += v0
+		v2 += 0x01
+		sprite v1 v2 0x01
+	#if wrapped, we'll get a collision and no artifacts left
+	#if there's no collision, it's likely a VIP
+		result_2 := vf
+		
+	#if vC is 2 (R/W block) or 4 (cheater?/VIP), the second result is a pass
+	#also draws bottom row again. former = clear, latter = artifact
+		if vC != 0x00 begin
+			result_2 := 0x01
+			sprite v1 v2 0x01
+		end
+
+	#if this is a VIP, the MEM[FFF] is part of the screen so we can
+	#clear the previously drawn artifact by modifying the memory directly
+		v0 := 0x00
+		i := 0xFFF
+		save v0
+		
+	#but we should now check 
+		if vC != 0x04 then jump test_memory_result
+	
+	#now we can redraw the bottom row -- if it collides we got a cheater
+		i := Block
+		sprite v1 v2 0x01
+		v0 := 0x01
+		v0 ^= vF
+		result_2 := v0
+		if result_2 == 0x00 then jump test_memory_result
+
+	#as a last step, clear the last row again, and certify as VIP if needed
+		sprite v1 v2 0x01
+		i := 0xFFF
+		load v0
+		if v0 == 0x00 begin
+			i := VIP
+			v2 := 0x1D
+			sprite v1 v2 0x03
+		end
+
+	: test_memory_result
+	#correlate the two results and set the pass flag
+		result_1 &= result_2
+		v9 := result_1
+		return
+#--------------------------------------------#
+: Welcome_Screen
+	i := Press_String
+	v0 := 0x05
+	vD := 0x0C
+	vE := 0x0A
+	
+	sprite vD vE 0x05
+		vD += 0x08
+		i += v0
+	sprite vD vE 0x05
+		vD += 0x08
+		i += v0
+	sprite vD vE 0x05
+		vD += 0x06
+		i += v0
+	sprite vD vE 0x05
+		vD += 0x06
+		i += v0
+	sprite vD vE 0x05
+	
+	vD := 0x0D
+	vE += 0x07
+
+		i += v0
+	sprite vD vE 0x05
+		vD += 0x08
+		i += v0
+	sprite vD vE 0x05
+			vD += 0x06
+		i += v0
+	sprite vD vE 0x05
+			vD += 0x04
+		i += v0
+	sprite vD vE 0x05
+			vD += 0x09
+		i += v0
+	sprite vD vE 0x05
+	return
+#--------------------------------------------#
+: Print_Categories
+	clear
+	i := Input_String
+	v0 := 0x05
+	vD := 0x0D
+	vE := 0x02
+	
+	sprite vD vE 0x05
+		vD += 0x08
+		i += v0
+	sprite vD vE 0x05
+		vD += 0x09
+		i += v0
+	sprite vD vE 0x05
+	Paint_Cross
+	
+	i := Draw_String
+	vD := 0x0D
+	vE := 0x09
+	
+	sprite vD vE 0x05
+		vD += 0x08
+		i += v0
+	sprite vD vE 0x05
+		vD += 0x05
+		i += v0
+	sprite vD vE 0x05
+	Paint_Cross
+	
+	i := Hex_String
+	vD := 0x0D
+	vE := 0x10
+	
+	sprite vD vE 0x05
+		vD += 0x09
+		i += v0
+	sprite vD vE 0x05
+		vD -= 0x05
+		vF := 0xEE
+		i := hex vF
+	sprite vD vE 0x05
+	Paint_Cross
+	
+	i := Memory_String
+	vD := 0x0D
+	vE := 0x17
+	
+	sprite vD vE 0x05
+		vD += 0x06
+		i += v0
+	sprite vD vE 0x05
+		vD += 0x04
+		i += v0
+	sprite vD vE 0x05
+
+	Paint_Cross
+	
+	return
+#--------------------------------------------#
+: Paint_Cross
+	vD := 0x07
+	i := Result_String
+	sprite vD vE 0x05
+	return
+
+: Paint_Tick
+	Paint_Cross
+	vF := 0x5
+	i += vF
+	sprite vD vE 0x05
+	return
+#--------------------------------------------#
+: VIP
+0xAB 0xAB 0x4A
+
+: Input_String
+0x40 0x14 0xDA 0x52 0x52 # in
+0x60 0xA9 0xE9 0x89 0x86 # pu
+0x40 0xE0 0x40 0x40 0x60 # t
+
+: Result_String
+0x00 0xA0 0x40 0xA0 0x00 # cross
+0x00 0xA0 0xC0 0x80 0x00 # tick
+
+: Hex_String
+0xA0 0xA0 0xE0 0xA0 0xA0 # H
+# E drawn with hex sprite
+0xA0 0xA0 0x40 0xA0 0xA0 # X
+
+: Draw_String
+0x20 0x2A 0xEC 0xA8 0xE8 # dr
+0x60 0x10 0xF0 0x90 0x60 # a
+0x88 0xA8 0xA8 0x70 0x50 # w
+
+: Press_String
+0x60 0xAA 0xEC 0x88 0x88 # pr
+0x46 0xA8 0xE4 0x82 0x6C # es
+0x60 0x80 0x40 0x20 0xC0 # s
+
+0x60 0x10 0xF0 0x90 0x60 # a
+0x05 0xA5 0xD7 0x91 0x96 # ny
+
+0x84 0xAA 0xCE 0xA8 0xA6 # ke
+0xA0 0xA0 0xE0 0x20 0xC0 # y
+
+0x40 0xE0 0x40 0x40 0x60 # t
+0x89 0xA8 0xAB 0x71 0x51 # wi
+0x04 0x6A 0x8E 0x88 0x66 # ce
+
+: Memory_String
+0x00 0x50 0xA8 0xA8 0xA8 # m
+0x40 0xA0 0xE0 0x80 0x60 # e
+0x00 0x52 0xA8 0xAA 0xA8 # m:
+
+: Block
+0xFF 0xFF 0xFF 0xFF 0xFF
+
+
+
